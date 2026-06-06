@@ -5,3 +5,7 @@ psutil>=5.9.8
 pydantic>=2.6.0
 requests>=2.31.0
 google-cloud-storage>=2.15.0
+python-multipart
+decord
+peft
+sentencepiece

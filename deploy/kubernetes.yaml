@@ -25,6 +25,8 @@ metadata:
     app: wan-api
 spec:
   replicas: 1 # Starts with 1 pod, autoscaling can be managed by GKE Node Pools
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: wan-api
@@ -36,7 +38,7 @@ spec:
       containers:
         - name: wan-api-container
           image: us-central1-docker.pkg.dev/wan-video-production/wan-video-repo/wan2.2-api:latest # Updated to Artifact Registry production format
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           env:
@@ -46,6 +48,8 @@ spec:
               value: "8000"
             - name: WAN_DATABASE_URL
               value: "sqlite:////app/api_storage/api_jobs.db"
+            - name: WAN_API_MOCK
+              value: "True"
             - name: GCP_PROJECT_ID
               valueFrom:
                 configMapKeyRef:

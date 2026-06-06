@@ -556,19 +556,23 @@ psutil>=5.9.8
 pydantic>=2.6.0
 requests>=2.31.0
 google-cloud-storage>=2.15.0
+python-multipart
+decord
+peft
+sentencepiece
 EOF
 
 # =====================================================================
 # WRITE FILE: deploy/Dockerfile
 # =====================================================================
 cat << 'EOF' > deploy/Dockerfile
-FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime
+FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn9-devel
 ENV PYTHONUNBUFFERED=1 DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential git ffmpeg libgl1-mesa-glx libglib2.0-0 curl && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt requirements_animate.txt requirements_s2v.txt ./
 COPY api/requirements_api.txt ./api/
-RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir -r api/requirements_api.txt
+RUN pip install --no-cache-dir --upgrade pip && sed -i '/flash_attn/d' requirements.txt && pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir -r api/requirements_api.txt && pip install --no-cache-dir --no-build-isolation flash_attn
 COPY . .
 EXPOSE 8000
 RUN mkdir -p api_storage/uploads api_storage/generated api_storage/logs
@@ -606,6 +610,8 @@ metadata:
     app: wan-api
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: wan-api
@@ -617,7 +623,7 @@ spec:
       containers:
         - name: wan-api-container
           image: us-central1-docker.pkg.dev/cs-26delhi-lab2-10830/wan-video-repo/wan2.2-api:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           env:
@@ -627,6 +633,8 @@ spec:
               value: "8000"
             - name: WAN_DATABASE_URL
               value: "sqlite:////app/api_storage/api_jobs.db"
+            - name: WAN_API_MOCK
+              value: "True"
             - name: GCP_PROJECT_ID
               valueFrom:
                 configMapKeyRef:

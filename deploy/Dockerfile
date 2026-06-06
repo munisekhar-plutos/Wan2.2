@@ -1,5 +1,5 @@
 # Use official PyTorch GPU runtime image with CUDA 12.1
-FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime
+FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn9-devel
 
 # Set system-level environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -25,8 +25,10 @@ COPY api/requirements_api.txt ./api/
 
 # Install python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
+    sed -i '/flash_attn/d' requirements.txt && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -r api/requirements_api.txt
+    pip install --no-cache-dir -r api/requirements_api.txt && \
+    pip install --no-cache-dir --no-build-isolation flash_attn
 
 # Copy the rest of the application codebase
 COPY . .
