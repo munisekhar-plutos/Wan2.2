@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  wan-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: wan_video_api
+    ports:
+      - "8000:8000"
+    environment:
+      # Toggle mock mode (set to "False" to run actual GPU inference)
+      - WAN_API_MOCK=${WAN_API_MOCK:-False}
+      - WAN_API_HOST=0.0.0.0
+      - WAN_API_PORT=8000
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID:-}
+      - WAN_GCS_BUCKET=${WAN_GCS_BUCKET:-}
+      # If using GCS, mount your GCP service account credentials
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-credentials.json
+    volumes:
+      # Persist local database and storage across container restarts
+      - wan_storage:/app/api_storage
+      # Optional: mount GCP service account key for cloud access
+      - ${GOOGLE_APPLICATION_CREDENTIALS:-./dummy.json}:/app/gcp-credentials.json:ro
+      # Optional: Mount your pre-downloaded model checkpoints to avoid re-downloading inside container
+      - ${WAN_MODEL_DIR:-../}:/app/models:ro
+    # Enable NVIDIA GPU access inside the container
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  wan_storage:

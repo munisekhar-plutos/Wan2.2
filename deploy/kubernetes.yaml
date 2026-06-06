@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wan-video-platform
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wan-checkpoints-pvc
+  namespace: wan-video-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: premium-rwo # Fast GCP SSD storage
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wan-api-deployment
+  namespace: wan-video-platform
+  labels:
+    app: wan-api
+spec:
+  replicas: 1 # Starts with 1 pod, autoscaling can be managed by GKE Node Pools
+  selector:
+    matchLabels:
+      app: wan-api
+  template:
+    metadata:
+      labels:
+        app: wan-api
+    spec:
+      containers:
+        - name: wan-api-container
+          image: us-central1-docker.pkg.dev/wan-video-production/wan-video-repo/wan2.2-api:latest # Updated to Artifact Registry production format
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: WAN_API_HOST
+              value: "0.0.0.0"
+            - name: WAN_API_PORT
+              value: "8000"
+            - name: WAN_DATABASE_URL
+              value: "sqlite:////app/api_storage/api_jobs.db"
+            - name: GCP_PROJECT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: gcp-config
+                  key: project-id
+            - name: WAN_GCS_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: gcp-config
+                  key: bucket-name
+          resources:
+            requests:
+              memory: "16Gi"
+              cpu: "4"
+              nvidia.com/gpu: "1" # Request exactly 1 GPU (e.g. L4 or A100-80GB based on Node Pool)
+            limits:
+              memory: "32Gi"
+              cpu: "8"
+              nvidia.com/gpu: "1" # Limit to 1 GPU to prevent conflicts
+          volumeMounts:
+            - name: storage-volume
+              mountPath: /app/api_storage
+            - name: checkpoints-volume
+              mountPath: /app/models # Mounts large model checkpoints dynamically to avoid re-downloads
+      volumes:
+        - name: storage-volume
+          persistentVolumeClaim:
+            claimName: wan-checkpoints-pvc
+        - name: checkpoints-volume
+          persistentVolumeClaim:
+            claimName: wan-checkpoints-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wan-api-service
+  namespace: wan-video-platform
+spec:
+  type: LoadBalancer # Exposes the service externally via a GCP External IP
+  selector:
+    app: wan-api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gcp-config
+  namespace: wan-video-platform
+data:
+  project-id: "wan-video-production"
+  bucket-name: "wan-video-production-storage"
