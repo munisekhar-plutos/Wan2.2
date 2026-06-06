@@ -1,0 +1,94 @@
+name: Build and Deploy to GCP GKE
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+# Add permissions required for Workload Identity Federation (OIDC token generation)
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: cs-26delhi-lab2-10830
+  GAR_LOCATION: us-central1
+  GAR_REPOSITORY: wan-video-repo
+  IMAGE_NAME: wan2.2-api
+  GKE_CLUSTER: wan-video-cluster
+  GKE_ZONE: us-central1-a
+  DEPLOYMENT_NAME: wan-api-deployment
+  NAMESPACE: wan-video-platform
+  # Workload Identity Variables
+  WIF_PROVIDER: projects/567414015150/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+  SERVICE_ACCOUNT: github-cicd-worker@cs-26delhi-lab2-10830.iam.gserviceaccount.com
+
+jobs:
+  setup-build-publish-deploy:
+    name: Setup, Build, Publish, and Deploy
+    runs-on: ubuntu-latest
+    steps:
+    
+    # 1. Checkout the Github repository
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # 2. Authenticate with Google Cloud using Workload Identity Federation (No JSON keys needed!)
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ env.WIF_PROVIDER }}
+        service_account: ${{ env.SERVICE_ACCOUNT }}
+
+    # 3. Setup gcloud CLI tool
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    # 4. Configure Docker helper to authenticate with Artifact Registry
+    - name: Configure Docker
+      run: |
+        gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
+
+    # 5. Build the Docker Image
+    - name: Build Docker Image
+      run: |
+        docker build \
+          -t ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+          -t ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}:latest \
+          -f deploy/Dockerfile .
+
+    # 6. Push the Docker Image to GCP Artifact Registry
+    - name: Push Docker Image
+      run: |
+        docker push ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        docker push ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}:latest
+
+    # 7. Connect to GKE Cluster (Google Kubernetes Engine)
+    - name: Get GKE Credentials
+      uses: google-github-actions/get-gke-credentials@v2
+      with:
+        cluster_name: ${{ env.GKE_CLUSTER }}
+        location: ${{ env.GKE_ZONE }}
+
+    # 8. Apply Kubernetes Manifests and update Deployments
+    - name: Deploy to GKE Cluster
+      run: |
+        # Apply the manifests
+        kubectl apply -f deploy/kubernetes.yaml
+        
+        # Ensure the ConfigMap is synced
+        kubectl create configmap gcp-config \
+          -n ${{ env.NAMESPACE }} \
+          --from-literal=project-id="${{ env.PROJECT_ID }}" \
+          --from-literal=bucket-name="wan-video-storage-10830" \
+          --dry-run=client -o yaml | kubectl apply -f -
+        
+        # Deploy the newly built container image matching the current Github commit SHA
+        kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
+          wan-api-container=${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+          -n ${{ env.NAMESPACE }}
+        
+        # Force a rolling update to guarantee fresh pods are deployed
+        kubectl rollout restart deployment/${{ env.DEPLOYMENT_NAME }} -n ${{ env.NAMESPACE }}
+        kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} -n ${{ env.NAMESPACE }}
