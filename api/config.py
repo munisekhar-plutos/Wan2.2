@@ -25,7 +25,7 @@ class Settings:
     
     # Wan2.2 Weights & CLI Configurations
     WAN_MODEL_DIR: str = os.getenv("WAN_MODEL_DIR", str(BASE_DIR))
-    FFMPEG_PATH: str = os.getenv("FFMPEG_PATH", "ffmpeg") # Path to ffmpeg binary
+    FFMPEG_PATH: str = "/usr/bin/ffmpeg" if os.path.exists("/usr/bin/ffmpeg") else os.getenv("FFMPEG_PATH", "ffmpeg")
     
     # Diagnostic / Mock Mode
     # Set to 'True' to run fully mock video generation & fine-tuning for testing on local non-GPU machines

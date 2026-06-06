@@ -124,7 +124,6 @@ class VideoOrchestrator:
             try:
                 subprocess.run(dummy_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             except Exception:
-                # If drawtext fails due to font config, fall back to basic color generator
                 fallback_cmd = [
                     settings.FFMPEG_PATH,
                     "-y",
@@ -134,7 +133,7 @@ class VideoOrchestrator:
                     "-pix_fmt", "yuv420p",
                     str(clip_path)
                 ]
-                subprocess.run(fallback_cmd, check=True)
+                subprocess.run(fallback_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             return clip_path
 
         # 2. Real Model Inference Execution

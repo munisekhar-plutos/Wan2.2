@@ -55,7 +55,7 @@ class Settings:
     GENERATED_DIR: Path = STORAGE_DIR / "generated"
     LOGS_DIR: Path = STORAGE_DIR / "logs"
     WAN_MODEL_DIR: str = os.getenv("WAN_MODEL_DIR", str(BASE_DIR))
-    FFMPEG_PATH: str = os.getenv("FFMPEG_PATH", "ffmpeg")
+    FFMPEG_PATH: str = "/usr/bin/ffmpeg" if os.path.exists("/usr/bin/ffmpeg") else os.getenv("FFMPEG_PATH", "ffmpeg")
     MOCK_MODE: bool = os.getenv("WAN_API_MOCK", "False").lower() in ("true", "1", "yes")
 
 settings = Settings()
@@ -345,7 +345,7 @@ class VideoOrchestrator:
             cmd = [settings.FFMPEG_PATH, "-y", "-f", "lavfi", "-i", f"color=c=black:s=1280x720:d=5", "-vf", f"drawtext=text='Clip {clip_index+1} | Prompt: {prompt[:20]}...':fontsize=24:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(clip_path)]
             try: subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             except Exception:
-                subprocess.run([settings.FFMPEG_PATH, "-y", "-f", "lavfi", "-i", "color=c=blue:s=1280x720:d=5", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(clip_path)], check=True)
+                subprocess.run([settings.FFMPEG_PATH, "-y", "-f", "lavfi", "-i", "color=c=blue:s=1280x720:d=5", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(clip_path)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             return clip_path
         size_param = "1280*704" if resolution == "720p" else "854*480"
         cmd = ["python", "generate.py", "--task", "ti2v-5B", "--size", size_param, "--ckpt_dir", "./Wan2.2-TI2V-5B", "--offload_model", "True", "--convert_model_dtype", "--t5_cpu", "--prompt", prompt]
